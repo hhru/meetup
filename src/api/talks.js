@@ -12,4 +12,10 @@ export default {
             .then(response => Promise.resolve(response.data))
             .catch(error => Promise.reject(error));
     },
+
+    dislike(key) {
+        return Vue.http.get(`api/${key}/dislike`)
+            .then(response => Promise.resolve(response.data))
+            .catch(error => Promise.reject(error));
+    },
 };

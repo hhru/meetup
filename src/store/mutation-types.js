@@ -1,4 +1,6 @@
+export const START_REQUEST = 'START_REQUEST';
+export const FINISH_REQUEST = 'FINISH_REQUEST';
+
 export const RECEIVE_TALKS = 'RECEIVE_TALKS';
 export const RECEIVE_TALK = 'RECEIVE_TALK';
-export const LIKE = 'LIKE';
-export const DISLIKE = 'DISLIKE';
+export const RECEIVE_USER = 'RECEIVE_USER';

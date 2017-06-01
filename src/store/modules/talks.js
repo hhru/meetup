@@ -21,13 +21,24 @@ const getters = {
 
 const actions = {
     getAllTalks({commit}) {
+        commit(types.START_REQUEST);
         talks.getAll().then((talks) => {
             commit(types.RECEIVE_TALKS, {talks});
+            commit(types.FINISH_REQUEST);
         });
     },
     like({commit}, talk) {
-        talks.like(talk.key).then((result) => {
-            commit(types.RECEIVE_TALK, {result});
+        commit(types.START_REQUEST);
+        talks.like(talk.key).then((talk) => {
+            commit(types.RECEIVE_TALK, {talk});
+            commit(types.FINISH_REQUEST);
+        });
+    },
+    dislike({commit}, talk) {
+        commit(types.START_REQUEST);
+        talks.dislike(talk.key).then((talk) => {
+            commit(types.RECEIVE_TALK, {talk});
+            commit(types.FINISH_REQUEST);
         });
     },
 };
@@ -38,7 +49,7 @@ const mutations = {
     },
     [types.RECEIVE_TALK](state, {talk}) {
         const index = state.all.findIndex(item => item.key === talk.key);
-        state.all[index] = talk;
+        state.all.splice(index, 1, talk);
     },
 };
 

@@ -1,0 +1,12 @@
+package config
+
+const TOKEN = "something"
+const SECRET = "something"
+
+const KEY = `
+-----BEGIN RSA PRIVATE KEY-----
+...
+somekey
+...
+-----END RSA PRIVATE KEY-----
+`

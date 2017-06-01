@@ -15,7 +15,11 @@
         </div>
         </div>
         <div class="buttons">
-            <button class="button" @click="like(talk)" v-bind:class="{button_voted: talk.hasVoted}" type="button">
+            <button class="button"
+                    type="button"
+                    :disabled="!talk.canVote"
+                    :class="{button_voted: talk.hasVoted}"
+                    @click="vote(talk)">
                 {{ talk.votes }}
             </button>
         </div>
@@ -32,8 +36,9 @@
             },
         },
         methods: {
-            like(talk) {
-                this.$store.dispatch('like', talk);
+            vote(talk) {
+                const action = talk.hasVoted ? 'dislike' : 'like';
+                this.$store.dispatch(action, talk);
             },
         },
     };
@@ -46,7 +51,7 @@
         background: #fff;
         box-shadow: 0 1px 0 0 rgba(0, 0, 0, .1);
         margin-top: 10px;
-        padding: 10px 20px;
+        padding: 20px 30px;
     }
 
         .talk:first-child {
@@ -54,24 +59,23 @@
         }
 
     .talk__date {
-        color: #45494e;
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
+        color: #8e8e8e;
+        font-size: 16px;
     }
 
     .talk__content {
         display: inline-block;
         width: calc(100% - 68px);
         color: #666A73;
-        font-size: 13px;
+        font-size: 16px;
+        line-height: 1.6;
         margin: 0;
     }
 
     .talk__description {
         white-space: pre-wrap;
         word-wrap: break-word;
-        margin: 0;
+        margin: -0.5ex 0 0;
     }
 
     .talk__avatar {
@@ -83,16 +87,19 @@
 
     .talk__time {
         float: right;
-        color: #999;
-        font-size: 11px;
+        color: #aaa;
+        font-size: 12px;
     }
 
     .talk__title {
         display: block;
-        margin: 10px 0;
+        margin: 10px 0 30px;
         color: #282C35;
-        font-size: 15px;
+        font-size: 24px;
         font-weight: 600;
+        line-height: 1.2;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #eee;
     }
 
     .attachments {
@@ -121,6 +128,10 @@
         font-weight: bold;
     }
 
+        .button:hover {
+            cursor: pointer;
+        }
+
         .button:after {
             content: '';
             display: inline-block;
@@ -130,6 +141,10 @@
             margin-left: 5px;
             background: url('../assets/vote.svg') no-repeat;
             background-size: 200%;
+        }
+
+        .button:disabled:after {
+            content: none;
         }
 
         .button_voted {

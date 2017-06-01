@@ -1,16 +1,18 @@
 package jira
 
 import (
-	"github.com/garyburd/go-oauth/oauth"
-	"io/ioutil"
-	"encoding/json"
 	"crypto/rsa"
-	"encoding/pem"
 	"crypto/x509"
-	"fmt"
+	"encoding/json"
+	"encoding/pem"
 	"errors"
-	"net/url"
+	"fmt"
+	"github.com/garyburd/go-oauth/oauth"
+	"github.com/vecmezoni/gomeet/config"
+	"io/ioutil"
 	"net/http"
+	"net/url"
+	"strings"
 )
 
 type Client struct {
@@ -24,12 +26,12 @@ type AuthorizedClient struct {
 }
 
 var FIELDS = []string{"status", "duedate", "customfield_22510", "customfield_22511", "assignee", "votes",
-  "summary", "description", "attachment"}
+	"summary", "description", "attachment", "reporter", "resolution"}
 
 func NewClient(host string) (*Client, error) {
-	credentials, err := loadCredentials()
-	if err != nil {
-		return nil, fmt.Errorf("Error reading credentials, %v", err)
+	credentials := oauth.Credentials{
+		config.TOKEN,
+		config.SECRET,
 	}
 
 	key, err := loadKey()
@@ -45,7 +47,7 @@ func NewClient(host string) (*Client, error) {
 		},
 	}
 
-	client.Credentials = *credentials
+	client.Credentials = credentials
 	client.PrivateKey = key
 	client.SignatureMethod = oauth.RSASHA1
 	client.host = host
@@ -56,25 +58,10 @@ func NewClient(host string) (*Client, error) {
 func buildURL(scheme string, host string, path string) string {
 	result := url.URL{
 		Scheme: scheme,
-		Host: host,
-		Path: path,
+		Host:   host,
+		Path:   path,
 	}
 	return result.String()
-}
-
-func loadCredentials() (*oauth.Credentials, error) {
-	b, err := ioutil.ReadFile("etc/config.json")
-	if err != nil {
-		return nil, err
-	}
-	credetials := new(oauth.Credentials)
-
-	if err = json.Unmarshal(b, credetials); err != nil {
-		return nil, fmt.Errorf("Failed to unmarshall credentials: %v",err)
-	}
-
-	return credetials, nil
-
 }
 
 func parseKey(key []byte) (*rsa.PrivateKey, error) {
@@ -97,11 +84,7 @@ func parseKey(key []byte) (*rsa.PrivateKey, error) {
 }
 
 func loadKey() (*rsa.PrivateKey, error) {
-	file, err := ioutil.ReadFile("etc/key")
-	if err != nil {
-		return nil, fmt.Errorf("Error reading key: %v", err)
-	}
-	key, err := parseKey(file)
+	key, err := parseKey([]byte(config.KEY))
 	if err != nil {
 		return nil, fmt.Errorf("Error parsing key: %v", err)
 	}
@@ -117,70 +100,88 @@ func NewAuthorizedClient(client *Client, credentials *oauth.Credentials) *Author
 	return result
 }
 
+func (c *AuthorizedClient) do(client *http.Client, method string, credentials *oauth.Credentials, urlStr string, form url.Values) (*http.Response, error) {
+	req, err := http.NewRequest(method, urlStr, strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range c.Header {
+		req.Header[k] = v
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if err := c.SetAuthorizationHeader(req.Header, credentials, method, req.URL, form); err != nil {
+		return nil, err
+	}
+	if client == nil {
+		client = http.DefaultClient
+	}
+	return client.Do(req)
+}
+
 func (authorizedClient AuthorizedClient) GetMyself() (*User, error) {
-  result := new(User)
+	result := new(User)
 
-  resp, err := authorizedClient.Get(
-    nil,
-    authorizedClient.userCredentials,
-    buildURL("https", authorizedClient.host, "/rest/api/2/myself"),
-    nil,
-  )
+	resp, err := authorizedClient.Get(
+		nil,
+		authorizedClient.userCredentials,
+		buildURL("https", authorizedClient.host, "/rest/api/2/myself"),
+		nil,
+	)
 
-  if err != nil {
-    return nil, err
-  }
+	if err != nil {
+		return nil, err
+	}
 
-  defer resp.Body.Close()
+	defer resp.Body.Close()
 
-  if resp.StatusCode != http.StatusOK {
-    p, _ := ioutil.ReadAll(resp.Body)
-    return nil, fmt.Errorf("GET %s returned status %d, %s", resp.Request.URL, resp.StatusCode, p)
-  }
+	if resp.StatusCode != http.StatusOK {
+		p, _ := ioutil.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GET %s returned status %d, %s", resp.Request.URL, resp.StatusCode, p)
+	}
 
-  body, err := ioutil.ReadAll(resp.Body)
+	body, err := ioutil.ReadAll(resp.Body)
 
-  if err != nil {
-    return nil, err
-  }
+	if err != nil {
+		return nil, err
+	}
 
-  json.Unmarshal(body, result)
+	json.Unmarshal(body, result)
 
-  return result, nil
+	return result, nil
 }
 
 func (authorizedClient AuthorizedClient) GetTalk(key string) (*Talk, error) {
-  result := new(Talk)
+	result := new(Talk)
 
-  resp, err := authorizedClient.Get(
-    nil,
-    authorizedClient.userCredentials,
-    buildURL("https", authorizedClient.host, fmt.Sprintf("/rest/api/2/issue/%s", key)),
-    url.Values{
-      "fields": FIELDS,
-    },
-  )
+	resp, err := authorizedClient.Get(
+		nil,
+		authorizedClient.userCredentials,
+		buildURL("https", authorizedClient.host, fmt.Sprintf("/rest/api/2/issue/%s", key)),
+		url.Values{
+			"fields": FIELDS,
+		},
+	)
 
-  if err != nil {
-    return nil, err
-  }
+	if err != nil {
+		return nil, err
+	}
 
-  defer resp.Body.Close()
+	defer resp.Body.Close()
 
-  if resp.StatusCode != http.StatusOK {
-    p, _ := ioutil.ReadAll(resp.Body)
-    return nil, fmt.Errorf("GET %s returned status %d, %s", resp.Request.URL, resp.StatusCode, p)
-  }
+	if resp.StatusCode != http.StatusOK {
+		p, _ := ioutil.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GET %s returned status %d, %s", resp.Request.URL, resp.StatusCode, p)
+	}
 
-  body, err := ioutil.ReadAll(resp.Body)
+	body, err := ioutil.ReadAll(resp.Body)
 
-  if err != nil {
-    return nil, err
-  }
+	if err != nil {
+		return nil, err
+	}
 
-  json.Unmarshal(body, result)
+	json.Unmarshal(body, result)
 
-  return result, nil
+	return result, nil
 }
 
 func (authorizedClient AuthorizedClient) GetTalks(query string) (*Talks, error) {
@@ -191,9 +192,9 @@ func (authorizedClient AuthorizedClient) GetTalks(query string) (*Talks, error) 
 		authorizedClient.userCredentials,
 		buildURL("https", authorizedClient.host, "/rest/api/2/search"),
 		url.Values{
-			"jql": {query},
-			"fields": FIELDS,
-      "maxResults": {"10000000"},
+			"jql":        {query},
+			"fields":     FIELDS,
+			"maxResults": {"10000000"},
 		},
 	)
 
@@ -220,14 +221,15 @@ func (authorizedClient AuthorizedClient) GetTalks(query string) (*Talks, error) 
 }
 
 func (authorizedClient AuthorizedClient) setVotedFlag(talk string, voted bool) error {
-	call := authorizedClient.Delete
+	method := "DELETE"
 
 	if voted {
-		call = authorizedClient.Post
+		method = "POST"
 	}
 
-	resp, err := call(
+	resp, err := authorizedClient.do(
 		nil,
+		method,
 		authorizedClient.userCredentials,
 		buildURL("https", authorizedClient.host, fmt.Sprintf("/rest/api/2/issue/%s/votes", talk)),
 		url.Values{},
@@ -239,7 +241,7 @@ func (authorizedClient AuthorizedClient) setVotedFlag(talk string, voted bool) e
 
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusNoContent {
 		p, _ := ioutil.ReadAll(resp.Body)
 		return fmt.Errorf("post %s returned status %d, %s", resp.Request.URL, resp.StatusCode, p)
 	}

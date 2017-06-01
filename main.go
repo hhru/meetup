@@ -1,30 +1,28 @@
 package main
 
 import (
-	"net/http"
+	"github.com/dgrijalva/jwt-go"
+	"github.com/garyburd/go-oauth/oauth"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
-	"github.com/dgrijalva/jwt-go"
 	"github.com/vecmezoni/gomeet/jira"
+	"github.com/vecmezoni/gomeet/talk"
+	"github.com/vecmezoni/gomeet/user"
+	"net/http"
 	"time"
-	"github.com/garyburd/go-oauth/oauth"
-	"github.com/vecmezoni/gomeet/meetup"
 )
 
 type jwtCustomClaims struct {
 	Temporary *oauth.Credentials `json:"temporary"`
 	Permanent *oauth.Credentials `json:"permanent"`
-  Name string `json:"name"`
-  DisplayName string `json:"display_name"`
-  Avatar string `json:"avatar"`
+	user.User
 	jwt.StandardClaims
 }
-
 
 type CustomContext struct {
 	echo.Context
 	unauthorizedClient *jira.Client
-	client *jira.AuthorizedClient
+	client             *jira.AuthorizedClient
 }
 
 func (c *CustomContext) SaveToken(claims *jwtCustomClaims) error {
@@ -36,10 +34,10 @@ func (c *CustomContext) SaveToken(claims *jwtCustomClaims) error {
 
 	c.SetCookie(
 		&http.Cookie{
-			Name: "token",
-			Value: t,
+			Name:    "token",
+			Value:   t,
 			Expires: time.Now().Add(time.Hour * 72),
-      Path: "/",
+			Path:    "/",
 		},
 	)
 
@@ -89,23 +87,21 @@ func main() {
 	e.GET("/oauth/login", func(c echo.Context) error {
 		context := c.(CustomContext)
 
-    e.Logger.Debug(context.Request().Host)
+		e.Logger.Debug(context.Request().Host)
 		callback := "http://" + context.Request().Host + "/oauth/callback"
 		tempCred, err := context.unauthorizedClient.RequestTemporaryCredentials(nil, callback, nil)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "Error getting temp cred, "+err.Error())
 		}
 
-    claims := &jwtCustomClaims{
-      tempCred,
-      nil,
-      "",
-      "",
-      "",
-      jwt.StandardClaims{
-        ExpiresAt: time.Now().Add(time.Hour * 72).Unix(),
-      },
-    }
+		claims := &jwtCustomClaims{
+			tempCred,
+			nil,
+			user.User{Name: "", DisplayName: "", Avatar: ""},
+			jwt.StandardClaims{
+				ExpiresAt: time.Now().Add(time.Hour * 72).Unix(),
+			},
+		}
 
 		if err := context.SaveToken(claims); err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "Error saving session , "+err.Error())
@@ -116,26 +112,20 @@ func main() {
 
 	g := e.Group("")
 
-  loaded := false
-
-  cache := meetup.Init()
-
 	g.Use(AuthorizationMiddleware)
 	g.Use(middleware.JWTWithConfig(middleware.JWTConfig{
-		SigningKey: []byte("secret"),
+		SigningKey:  []byte("secret"),
 		TokenLookup: "cookie:token",
-		Claims:     &jwtCustomClaims{},
+		Claims:      &jwtCustomClaims{},
 	}))
 	g.Use(ClientMiddleWare)
 
-  g.GET("/", func(c echo.Context) error {
-    return c.HTML(http.StatusOK, "HUY!")
-  })
+	g.Static("/", "dist")
 
 	g.GET("/oauth/callback", func(c echo.Context) error {
 		context := c.(CustomContext)
-		user := context.Get("user").(*jwt.Token)
-		claims := user.Claims.(*jwtCustomClaims)
+		storage := context.Get("user").(*jwt.Token)
+		claims := storage.Claims.(*jwtCustomClaims)
 		tempCred := claims.Temporary
 		if tempCred == nil || tempCred.Token != context.FormValue("oauth_token") {
 			return echo.NewHTTPError(http.StatusInternalServerError, "Unknown oauth_token.")
@@ -147,15 +137,13 @@ func main() {
 		claims.Temporary = nil
 		claims.Permanent = tokenCred
 
-    myself, err := jira.NewAuthorizedClient(context.unauthorizedClient, claims.Permanent).GetMyself()
+		myself, err := user.GetMyself(jira.NewAuthorizedClient(context.unauthorizedClient, claims.Permanent))
 
-    if err != nil {
-      return echo.NewHTTPError(http.StatusInternalServerError, "Error fetching user information, "+err.Error())
-    }
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "Error fetching storage information, "+err.Error())
+		}
 
-    claims.Name = myself.Name
-    claims.DisplayName = myself.DisplayName
-    claims.Avatar = myself.AvatarUrls.Big
+		claims.User = *myself
 
 		if err := context.SaveToken(claims); err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "Error saving session, "+err.Error())
@@ -164,70 +152,61 @@ func main() {
 		return context.Redirect(http.StatusFound, "/")
 	})
 
-  g.GET("/api/me", func(c echo.Context) error {
-    context := c.(CustomContext)
-    user := context.Get("user").(*jwt.Token)
-    claims := user.Claims.(*jwtCustomClaims)
-
-    result := new(meetup.User)
-
-    result.Name = claims.Name
-    result.DisplayName = claims.DisplayName
-    result.Avatar = claims.Avatar
-
-    return c.JSON(http.StatusOK, result)
-  })
+	g.GET("/api/me", func(c echo.Context) error {
+		context := c.(CustomContext)
+		storage := context.Get("user").(*jwt.Token)
+		claims := storage.Claims.(*jwtCustomClaims)
+		if claims.User.Name == "" {
+			return echo.NewHTTPError(http.StatusForbidden, "Unauthorized")
+		}
+		return c.JSON(http.StatusOK, claims.User)
+	})
 
 	g.GET("/api/talks", func(c echo.Context) error {
-    context := c.(CustomContext)
+		context := c.(CustomContext)
+		storage := context.Get("user").(*jwt.Token)
+		claims := storage.Claims.(*jwtCustomClaims)
 
-    if !loaded {
-      talks, err := context.client.GetTalks(`project = "R&D :: Meetups"`)
-      if err != nil {
-        return echo.NewHTTPError(http.StatusInternalServerError, err)
-      }
-      cache.Fill(meetup.TalksFromJira(talks))
-      loaded = true
-    }
+		result, err := talk.GetAllTalks(&claims.User, context.client)
 
-    result, err := cache.GetTalks()
-
-    if err != nil {
-      return echo.NewHTTPError(http.StatusInternalServerError, err)
-    }
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
 
 		return c.JSON(http.StatusOK, result)
 	})
 
-  g.GET("/api/:key/like", func(c echo.Context) error {
-    context := c.(CustomContext)
+	g.GET("/api/:key/like", func(c echo.Context) error {
+		context := c.(CustomContext)
 
-    key := context.Param("key")
+		key := context.Param("key")
+		storage := context.Get("user").(*jwt.Token)
+		claims := storage.Claims.(*jwtCustomClaims)
 
-    err := context.client.Like(key)
+		result, err := talk.Like(&claims.User, context.client, key)
 
-    if err != nil {
-      return echo.NewHTTPError(http.StatusInternalServerError, err)
-    }
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
 
-    updatedJiraTalk, err := context.client.GetTalk(key)
+		return c.JSON(http.StatusOK, result)
+	})
 
-    talk := meetup.TalkFromJira(updatedJiraTalk)
+	g.GET("/api/:key/dislike", func(c echo.Context) error {
+		context := c.(CustomContext)
 
-    err = cache.Update(talk)
+		key := context.Param("key")
+		storage := context.Get("user").(*jwt.Token)
+		claims := storage.Claims.(*jwtCustomClaims)
 
-    if err != nil {
-      return echo.NewHTTPError(http.StatusInternalServerError, err)
-    }
+		result, err := talk.Dislike(&claims.User, context.client, key)
 
-    cachedTalk, err := cache.GetTalk(key)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
 
-    if err != nil {
-      return echo.NewHTTPError(http.StatusInternalServerError, err)
-    }
-
-    return c.JSON(http.StatusOK, cachedTalk)
-  })
+		return c.JSON(http.StatusOK, result)
+	})
 
 	e.Logger.Fatal(e.Start(":1323"))
 }

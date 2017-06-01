@@ -20,6 +20,6 @@
         margin: 0 auto;
         list-style: none;
         padding: 10px;
-        max-width: 600px;
+        max-width: 800px;
     }
 </style>

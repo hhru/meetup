@@ -1,10 +1,12 @@
 <template>
     <div>
+        <loader :pending="pending"></loader>
         <div class="header-background">
             <div class="header">
                 <div class="logo"></div>
             </div>
             <div class="menu">
+                <img v-if="user" class="user" :src="user.avatar"/>
                 <router-link :to="{name: 'scheduled'}" class="menu-link">Расписание</router-link>
                 <router-link :to="{name: 'proposed'}" class="menu-link">Предложенные темы</router-link>
                 <router-link :to="{name: 'done'}" class="menu-link">Архив</router-link>
@@ -15,12 +17,23 @@
 </template>
 
 <script>
-export default {
-    name: 'app',
-    created() {
-        this.$store.dispatch('getAllTalks');
-    },
-};
+    import {mapGetters} from 'vuex';
+    import Loader from './components/Loader';
+
+    export default {
+        name: 'app',
+        computed: mapGetters({
+            user: 'user',
+            pending: 'pending',
+        }),
+        created() {
+            this.$store.dispatch('fetchUser');
+            this.$store.dispatch('getAllTalks');
+        },
+        components: {
+            Loader,
+        },
+    };
 </script>
 
 <style>
@@ -69,6 +82,14 @@ export default {
         background-size: 100%;
     }
 
+    .user {
+        display: inline-block;
+        vertical-align: middle;
+        margin-right: 50px;
+        border-radius: 50px;
+        height: 40px;
+    }
+
     .menu {
         position: absolute;
         bottom: 0;
@@ -86,6 +107,8 @@ export default {
         margin: 10px;
         outline: none;
         border: 1px solid transparent;
+        height: 40px;
+        box-sizing: border-box;
     }
 
         .menu-link:hover,
@@ -104,6 +127,10 @@ export default {
     @media (max-width: 600px) {
         .menu-link {
             display: block;
+        }
+
+        .user {
+            display: none;
         }
     }
 </style>
