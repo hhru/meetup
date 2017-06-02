@@ -1,4 +1,4 @@
-# gomeet
+# Meetup
 
 > A Vue.js project
 

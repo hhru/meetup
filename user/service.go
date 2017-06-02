@@ -1,6 +1,6 @@
 package user
 
-import "github.com/vecmezoni/gomeet/jira"
+import "github.com/hhru/meetup/jira"
 
 func GetMyself(client *jira.AuthorizedClient) (*User, error) {
 	myself, err := client.GetMyself()

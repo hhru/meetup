@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/garyburd/go-oauth/oauth"
-	"github.com/vecmezoni/gomeet/config"
+	"github.com/hhru/meetup/config"
 	"io/ioutil"
 	"net/http"
 	"net/url"

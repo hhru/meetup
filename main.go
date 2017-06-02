@@ -5,9 +5,9 @@ import (
 	"github.com/garyburd/go-oauth/oauth"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
-	"github.com/vecmezoni/gomeet/jira"
-	"github.com/vecmezoni/gomeet/talk"
-	"github.com/vecmezoni/gomeet/user"
+	"github.com/hhru/meetup/jira"
+	"github.com/hhru/meetup/talk"
+	"github.com/hhru/meetup/user"
 	"net/http"
 	"time"
 )

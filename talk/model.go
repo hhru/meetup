@@ -1,8 +1,8 @@
 package talk
 
 import (
-	"github.com/vecmezoni/gomeet/jira"
-	"github.com/vecmezoni/gomeet/user"
+	"github.com/hhru/meetup/jira"
+	"github.com/hhru/meetup/user"
 )
 
 type Talks struct {

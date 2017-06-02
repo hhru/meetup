@@ -1,6 +1,6 @@
 package user
 
-import "github.com/vecmezoni/gomeet/jira"
+import "github.com/hhru/meetup/jira"
 
 type User struct {
 	Name        string `json:"name"`
