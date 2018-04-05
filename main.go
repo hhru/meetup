@@ -1,15 +1,19 @@
 package main
 
 import (
+	"net/http"
+	"os"
+	"time"
+
+	"github.com/hhru/meetup/config"
+
 	"github.com/dgrijalva/jwt-go"
 	"github.com/garyburd/go-oauth/oauth"
-	"github.com/labstack/echo"
-	"github.com/labstack/echo/middleware"
 	"github.com/hhru/meetup/jira"
 	"github.com/hhru/meetup/talk"
 	"github.com/hhru/meetup/user"
-	"net/http"
-	"time"
+	"github.com/labstack/echo"
+	"github.com/labstack/echo/middleware"
 )
 
 type jwtCustomClaims struct {
@@ -75,10 +79,29 @@ func bindApp() echo.MiddlewareFunc {
 	}
 }
 
+func customHTTPErrorHandler(err error, c echo.Context) {
+	code := http.StatusInternalServerError
+	if he, ok := err.(*echo.HTTPError); ok {
+		code = he.Code
+		if err := c.JSON(code, struct{ error string }{error: err.Error()}); err != nil {
+			c.Logger().Error(err)
+		}
+	}
+
+	c.Logger().Error(err)
+}
+
 func main() {
 	e := echo.New()
+	logFile, err := os.OpenFile(config.LOG_FILE_PATH, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
+	if err != nil {
+		e.Logger.Fatal(err)
+	}
 
-	e.Use(middleware.Logger())
+	e.Use(middleware.RequestID())
+	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
+		Output: logFile,
+	}))
 	e.Use(middleware.Recover())
 	e.Use(bindApp())
 
@@ -168,7 +191,6 @@ func main() {
 		claims := storage.Claims.(*jwtCustomClaims)
 
 		result, err := talk.GetAllTalks(&claims.User, context.client)
-
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, err)
 		}
@@ -208,5 +230,6 @@ func main() {
 		return c.JSON(http.StatusOK, result)
 	})
 
+	e.HTTPErrorHandler = customHTTPErrorHandler
 	e.Logger.Fatal(e.Start(":1323"))
 }
